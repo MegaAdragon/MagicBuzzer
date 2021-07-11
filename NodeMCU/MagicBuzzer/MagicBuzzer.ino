@@ -15,13 +15,44 @@ uint32_t masterTick;
 // TODO: remove -> only to test sync
 uint32_t trigger;
 
-#define LED1 2
+#define LED1        2 // D4
+#define BUZZER_LED 15 // D8
+#define BUZZER_PIN 14 // D5
+
+volatile bool isBuzzered = false;
+volatile bool buzzerHandled = false;
+volatile uint32_t buzzerTick;
+
+// The delay threshold for debounce checking.
+const int debounceDelay = 50;
+
+void ICACHE_RAM_ATTR buzzerInterruptCallback() {
+  // check if already buzzered
+  if (isBuzzered)
+  {
+    return;
+  }
+
+  // Get the pin reading.
+  bool buzzerPressed = !digitalRead(BUZZER_PIN); // pin is low active
+  if (buzzerPressed) {
+    buzzerTick = millis();
+    isBuzzered = true;
+    buzzerHandled = false;
+  }
+}
 
 void setup() {
+  Serial.begin(115200);
+
+  digitalWrite(BUZZER_LED, LOW);
+  pinMode(BUZZER_LED, OUTPUT);
+
+  pinMode(BUZZER_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUZZER_PIN), buzzerInterruptCallback, FALLING);
+
   digitalWrite(LED1, LOW);
   pinMode(LED1, OUTPUT);
-
-  Serial.begin(115200);
 
   delay(1000);
   WiFi.begin(ssid, password);
@@ -55,6 +86,16 @@ void loop() {
   if (getTick() > trigger) {
     digitalWrite(LED1, !digitalRead(LED1));
     trigger = getTick() + 2000;
+
+    // reset buzzer
+    digitalWrite(BUZZER_LED, LOW);
+    isBuzzered = false;
+  }
+
+  if (isBuzzered && !buzzerHandled) {
+    Serial.printf("Buzzered: %d\n", buzzerTick);
+    digitalWrite(BUZZER_LED, HIGH);
+    buzzerHandled = true;
   }
 }
 
