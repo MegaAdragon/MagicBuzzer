@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <ESP8266WiFi.h>
 
 #include "ESPAsyncUDP.h"
@@ -8,6 +9,7 @@ const char* password =  "";
 #define UDP_PORT 4210 // listen port
 
 AsyncUDP udp;
+WiFiServer wifiServer(9999);  // TCP socket server on port 9999
 
 uint32_t localTick;
 uint32_t masterTick;
@@ -70,35 +72,91 @@ void setup() {
     Serial.print("UDP Listening on IP: ");
     Serial.println(WiFi.localIP());
     udp.onPacket([](AsyncUDPPacket packet) {
+      Serial.println("Sync");
+
       if (packet.length() == sizeof(uint32_t))
       {
         localTick = millis();
         memcpy((uint8_t*)&masterTick, packet.data(), sizeof(masterTick));
-        udp.writeTo((uint8_t*)&localTick, sizeof(localTick), packet.remoteIP(), UDP_PORT + 1);
+        udp.writeTo((uint8_t*)&localTick, sizeof(localTick), packet.remoteIP(), UDP_PORT);
 
         trigger = masterTick + 2000;
       }
     });
   }
+
+  // start TCP server
+  wifiServer.begin();
 }
 
 void loop() {
   if (getTick() > trigger) {
     digitalWrite(LED1, !digitalRead(LED1));
+    digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
     trigger = getTick() + 2000;
-
-    // reset buzzer
-    digitalWrite(BUZZER_LED, LOW);
-    isBuzzered = false;
   }
 
-  if (isBuzzered && !buzzerHandled) {
-    Serial.printf("Buzzered: %d\n", buzzerTick);
-    digitalWrite(BUZZER_LED, HIGH);
-    buzzerHandled = true;
+  WiFiClient client = wifiServer.available();
+  if (client) {
+    Serial.print("Connected to client: ");
+    Serial.println(client.remoteIP());
+
+    resetBuzzer();
+
+    while (client.connected()) {
+      //commHandler(client);  // handle incoming data
+
+      if (isBuzzered && !buzzerHandled) {
+        Serial.printf("Buzzered: %d\n", buzzerTick);
+        digitalWrite(BUZZER_LED, HIGH);
+        client.write((uint8_t*)&buzzerTick, sizeof(buzzerTick));
+        buzzerHandled = true;
+      }
+    }
   }
+}
+
+void commHandler(WiFiClient& client) {
+  static byte buf[32];
+  static int idx = 0;
+
+  // read all incoming byte into buffer
+  while (client.available() > 0) {
+    byte b = client.read();
+    buf[idx] = b;
+    idx++;
+
+    if (idx >= sizeof(buf)) {
+      assert(false);
+      idx = 0; // overflow -> this should never happen
+      Serial.println("Error: overflow");
+    }
+
+    // found msg delimiter
+    if (b == 0xFF) {
+      break;
+    }
+  }
+
+  // if no data in buffer or msg delimiter missing -> nothing to do
+  if (idx < 1 || buf[idx - 1] != 0xFF) {
+    return;
+  }
+
+  handleCommand(client, buf, idx);  // handle received command
+  idx = 0;
+}
+
+void handleCommand(WiFiClient& client, byte data[], int length) {
+
 }
 
 uint32_t getTick() {
   return masterTick + millis() - localTick;
+}
+
+void resetBuzzer() {
+  isBuzzered = false;
+  digitalWrite(BUZZER_LED, LOW);
+  buzzerHandled = true;
 }
