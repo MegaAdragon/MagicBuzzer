@@ -14,8 +14,6 @@ WiFiServer wifiServer(9999);  // TCP socket server on port 9999
 uint32_t localTick;
 uint32_t masterTick;
 
-// TODO: remove -> only to test sync
-uint32_t trigger;
 
 #define LED1        2 // D4
 #define BUZZER_LED 15 // D8
@@ -24,9 +22,6 @@ uint32_t trigger;
 volatile bool isBuzzered = false;
 volatile bool buzzerHandled = false;
 volatile uint32_t buzzerTick;
-
-// The delay threshold for debounce checking.
-const int debounceDelay = 50;
 
 void ICACHE_RAM_ATTR buzzerInterruptCallback() {
   // check if already buzzered
@@ -79,8 +74,6 @@ void setup() {
         localTick = millis();
         memcpy((uint8_t*)&masterTick, packet.data(), sizeof(masterTick));
         udp.writeTo((uint8_t*)&localTick, sizeof(localTick), packet.remoteIP(), UDP_PORT);
-
-        trigger = masterTick + 2000;
       }
     });
   }
@@ -90,13 +83,10 @@ void setup() {
 }
 
 void loop() {
-  if (getTick() > trigger) {
-    digitalWrite(LED1, !digitalRead(LED1));
-    digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
-    trigger = getTick() + 2000;
-  }
-
   WiFiClient client = wifiServer.available();
+  static uint32_t lastHeartbeatTick = 0;
+  static uint32_t lastBlinkTick = 0;
+
   if (client) {
     Serial.print("Connected to client: ");
     Serial.println(client.remoteIP());
@@ -104,16 +94,40 @@ void loop() {
     resetBuzzer();
 
     while (client.connected()) {
-      //commHandler(client);  // handle incoming data
+      commHandler(client);  // handle incoming data
 
+      Serial.printf("VBAT: %f\n", ((float)(analogRead(A0) / 1023.0f)) / (8.2f / (8.2f + 33.0f)));
       if (isBuzzered && !buzzerHandled) {
+        static uint8_t buf[sizeof(uint8_t) + sizeof(buzzerTick)];
         Serial.printf("Buzzered: %d\n", buzzerTick);
         digitalWrite(BUZZER_LED, HIGH);
-        client.write((uint8_t*)&buzzerTick, sizeof(buzzerTick));
+        buf[0] = 0x01;
+        memcpy(&buf[1], (uint8_t*)&buzzerTick, sizeof(buzzerTick));
+        client.write(buf, sizeof(buf));
         buzzerHandled = true;
       }
+
+      if (millis() - lastHeartbeatTick > 1000)
+      {
+        const uint8_t heartBeatMsg[1] = { 0xAA };
+        client.write(heartBeatMsg, sizeof(heartBeatMsg));
+        lastHeartbeatTick = millis();
+      }
+
+      delay(100);
     }
+
+    client.stop();
+    Serial.println("Client disconnected");
   }
+
+  if (millis() - lastBlinkTick > 2500) {
+    digitalWrite(LED1, !digitalRead(LED1));
+    digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
+    lastBlinkTick = millis();
+  }
+
+  delay(200);
 }
 
 void commHandler(WiFiClient& client) {
@@ -148,7 +162,14 @@ void commHandler(WiFiClient& client) {
 }
 
 void handleCommand(WiFiClient& client, byte data[], int length) {
-
+  byte cmd = data[0];
+  switch (cmd) {
+    case 0x10:
+      resetBuzzer();
+      break;
+    default:
+      break;
+  }
 }
 
 uint32_t getTick() {
