@@ -10,6 +10,8 @@ const char* password =  "";
 
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define UDP_PORT 4210 // listen port
@@ -19,7 +21,6 @@ WiFiServer wifiServer(9999);  // TCP socket server on port 9999
 
 uint32_t localTick;
 uint32_t masterTick;
-
 
 #define LED1        2 // D4
 #define BUZZER_LED 15 // D8
@@ -62,7 +63,16 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;); // Don't proceed, loop forever
   }
+
+
   display.clearDisplay();
+  display.setTextSize(1); // -> font height: 8px
+  display.setTextColor(SSD1306_WHITE); // Draw white text
+
+  display.setCursor(0, 0);
+  display.print("Connecting to WiFi:");
+  display.setCursor(0, 12);
+  display.print(ssid);
   display.display();
 
   delay(1000);
@@ -110,7 +120,6 @@ void loop() {
     while (client.connected()) {
       commHandler(client);  // handle incoming data
 
-      Serial.printf("VBAT: %f\n", ((float)(analogRead(A0) / 1023.0f)) / (8.2f / (8.2f + 33.0f)));
       if (isBuzzered && !buzzerHandled) {
         static uint8_t buf[sizeof(uint8_t) + sizeof(buzzerTick)];
         Serial.printf("Buzzered: %d\n", buzzerTick);
@@ -128,6 +137,7 @@ void loop() {
         lastHeartbeatTick = millis();
       }
 
+      updateDisplay(client);
       delay(100);
     }
 
@@ -141,6 +151,7 @@ void loop() {
     lastBlinkTick = millis();
   }
 
+  updateDisplay(client);
   delay(200);
 }
 
@@ -194,4 +205,24 @@ void resetBuzzer() {
   isBuzzered = false;
   digitalWrite(BUZZER_LED, LOW);
   buzzerHandled = true;
+}
+
+void updateDisplay(WiFiClient& client) {
+  display.clearDisplay();
+
+  display.setCursor(0, 0);
+  if (client.connected()) {
+    display.print("Connected");
+  }
+  else {
+    display.print("Wait for host...");
+  }
+
+  display.setCursor(0, 10);
+  display.print(WiFi.localIP());
+
+  display.setCursor(0, 24);
+  display.printf("VBAT: %.2f\n", ((float)(analogRead(A0) / 1023.0f)) / (8.2f / (8.2f + 33.0f)));
+
+  display.display();
 }
