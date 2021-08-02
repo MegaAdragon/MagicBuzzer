@@ -3,9 +3,13 @@ import socket
 import time
 import math
 import select
+import threading
+
+from flask import Flask, render_template, request, jsonify, make_response
 
 clients = []
 
+app = Flask(__name__)
 
 def get_client(**kwargs):
     if len(clients) < 1:
@@ -20,9 +24,38 @@ def get_client(**kwargs):
 def reset_buzzer():
     for c in clients:
         c['socket'].sendall(bytearray([0x10, 0xFF]))
+        c['buzzered'] = False
+        c['buzzerTick'] = 0
+
+
+@app.route('/')
+def home():
+    return render_template('buzzer.html', clients=clients)
+
+
+@app.route('/api/v1/buzzer/all', methods=['GET'])
+def api_all():
+    buzzer_list = []
+    for c in clients:
+        buzzer = {'addr': c['addr']}
+
+        if 'buzzered' in c:
+            buzzer['buzzered'] = c['buzzered']
+            buzzer['buzzerTick'] = c['buzzerTick']
+
+        if c['addr'] == '192.168.0.70':
+            buzzer['color'] = 'blue'
+        elif c['addr'] == '192.168.0.183':
+            buzzer['color'] = 'yellow'
+        buzzer_list.append(buzzer)
+            
+    return jsonify(buzzer_list)
 
 
 if __name__ == '__main__':
+    # run flask in own thread
+    threading.Thread(target=app.run, daemon=True, kwargs={'host': 'localhost', 'port': 5000, 'debug': False}).start()
+
     start_time = time.time()
     udp_sync_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     udp_sync_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -40,7 +73,7 @@ if __name__ == '__main__':
 
         if time.time() - last_sync > 5.0:
             last_sync = time.time()
-            print("sync broadcast send")
+            print("sync broadcast send", math.ceil(tick))
             udp_sync_socket.sendto(math.ceil(tick).to_bytes(4, byteorder='little'), ('<broadcast>', 4210))
 
             # TODO: remove this
@@ -74,7 +107,11 @@ if __name__ == '__main__':
         for sock in read_sockets:
             data = sock.recv(128)
             if data[0] == 0x01 and len(data) == 5:
-                print(tick, "BUZZERED", sock.getpeername(), int.from_bytes(data, byteorder='little'))
+                buzzerTick = int.from_bytes(data[1:], byteorder='little')
+                print(tick, "BUZZERED", sock.getpeername(), buzzerTick)
+                c = get_client(socket=sock)
+                c['buzzered'] = True
+                c['buzzerTick'] = buzzerTick
             elif data[0] == 0xAA:
                 c = get_client(socket=sock)
                 c['heartbeat'] = tick

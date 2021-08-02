@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Buzzer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+</head>
+<body>
+<div class="container" role="main">
+    <div class="page-header">
+        <h1>Buzzer</h1>
+    </div>
+
+    <div class="row text-center row-fluid" id="buzzer-layout">
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading" style="background-color:red;">
+                    <h3 class="panel-title">192.168.0.1</h3>
+                </div>
+                <div class="panel-body">
+                    <div class=".text-center">
+                        <svg height="100" width="100">
+                            <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="none"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /.col-sm-4 -->
+    </div>
+</div> <!-- /container -->
+
+</body>
+<script type="text/javascript">
+    setInterval(function () {
+        $("#buzzer-layout").empty();
+        $.getJSON("http://localhost:5000/api/v1/buzzer/all")
+            .done(function (data) {
+                $.each(data, function (i, item) {
+                    console.log("magic: " + JSON.stringify(item, null, 2));
+                    renderBuzzer(item);
+                });
+            })
+            .fail(function (jqxhr, textStatus, error) {
+                var err = textStatus + ", " + error;
+                console.log("Request Failed: " + err);
+            });
+    }, 250);
+
+    function renderBuzzer(buzzer) {
+        newdiv = '<div class="col-sm-4">' +
+            '<div class="panel panel-default">' +
+            '<div class="panel-heading" style="background-color:' + buzzer.color + ';">' +
+            '<h3 class="panel-title">' + buzzer.addr + '</h3>' +
+            ' </div>' +
+            '<div class="panel-body">' +
+            '<div class=".text-center">' +
+            '<svg height="100" width="100">' +
+            '<circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="' + (buzzer.buzzered ? 'red' : 'none') + '"/>' +
+            '<input type="time" class="form-control" value="00:00" id="sch-s-time" name="sch-s[]">' +
+            '</svg>' +
+            '</div></div></div></div>';
+
+        $("#buzzer-layout").append(newdiv);
+    }
+</script>
+
+</html>
