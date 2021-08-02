@@ -40,7 +40,7 @@ void ICACHE_RAM_ATTR buzzerInterruptCallback() {
   // Get the pin reading.
   bool buzzerPressed = !digitalRead(BUZZER_PIN); // pin is low active
   if (buzzerPressed) {
-    buzzerTick = millis();
+    buzzerTick = getTick();
     isBuzzered = true;
     buzzerHandled = false;
   }
@@ -63,7 +63,6 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;); // Don't proceed, loop forever
   }
-
 
   display.clearDisplay();
   display.setTextSize(1); // -> font height: 8px
