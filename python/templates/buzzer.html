@@ -1,38 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <title>Buzzer</title>
+    <!-- Required meta tags -->
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <title>Hello, world!</title>
 </head>
 <body>
-<div class="container" role="main">
-    <div class="page-header">
-        <h1>Buzzer</h1>
-    </div>
+<main role="main">
 
-    <div class="row text-center row-fluid" id="buzzer-layout">
-        <div class="col-sm-4">
-            <div class="panel panel-default">
-                <div class="panel-heading" style="background-color:red;">
-                    <h3 class="panel-title">192.168.0.1</h3>
-                </div>
-                <div class="panel-body">
-                    <div class=".text-center">
+    <section class="jumbotron text-center">
+        <div class="container">
+            <h1 class="jumbotron-heading">Buzzer</h1>
+            <p class="lead text-muted">Click here to reset the buzzers:</p>
+            <p>
+                <a href="#" class="btn btn-outline-success">Reset</a>
+            </p>
+        </div>
+    </section>
+
+    <div class="container">
+        <div class="row" id="buzzer-layout">
+            <div class="col-md-4">
+                <div class="card mb-3">
+                    <h5 class="card-header">192.168.0.100</h5>
+                    <div class="card-body text-center">
                         <svg height="100" width="100">
                             <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="none"/>
                         </svg>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4>1.</h4>
+                            <small class="text-muted">+100 ms</small>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div><!-- /.col-sm-4 -->
+        </div>
     </div>
-</div> <!-- /container -->
+</main> <!-- /container -->
 
-</body>
+<!-- Optional JavaScript -->
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+
 <script type="text/javascript">
     var buzzerList;
     setInterval(function () {
@@ -75,21 +96,22 @@
     }
 
     function renderBuzzer(buzzer) {
-        newdiv = '<div class="col-sm-4">' +
-            '<div class="panel panel-default">' +
-            '<div class="panel-heading" style="background-color:' + buzzer.color + ';">' +
-            '<h3 class="panel-title">' + buzzer.addr + '</h3>' +
-            ' </div>' +
-            '<div class="panel-body">' +
-            '<div class=".text-center">' +
+        newdiv = '<div class="col-md-4">' +
+            '<div class="card mb-3">' +
+            '<h5 class="card-header" style="background-color:' + buzzer.color + ';">' + buzzer.addr + '</h5>' +
+           // '<div class="panel-heading" style="background-color:' + buzzer.color + ';">' +
+            '<div class="card-body text-center">' +
             '<svg height="100" width="100">' +
             '<circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="' + (buzzer.buzzered ? 'red' : 'none') + '"/>' +
-            '<input type="time" class="form-control" value="00:00" id="sch-s-time" name="sch-s[]">' +
             '</svg>' +
+            '<div class="d-flex justify-content-between align-items-center">' +
+            '<h4>1.</h4>' +
+            '<small class="text-muted">+100 ms</small>' +
+            '</div>' +
             '</div></div></div></div>';
 
         $("#buzzer-layout").append(newdiv);
     }
 </script>
-
+</body>
 </html>
