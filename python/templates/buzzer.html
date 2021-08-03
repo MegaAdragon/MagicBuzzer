@@ -34,11 +34,20 @@
 
 </body>
 <script type="text/javascript">
+    var buzzerList;
     setInterval(function () {
-        $("#buzzer-layout").empty();
         $.getJSON("http://localhost:5000/api/v1/buzzer/all")
             .done(function (data) {
-                $.each(data, function (i, item) {
+                let tmp = sortByBuzzerTime(data);
+                // only render if data has changed
+                if (JSON.stringify(buzzerList) === JSON.stringify(tmp)) {
+                    return;
+                }
+                buzzerList = tmp;
+
+                // render buzzer list
+                $("#buzzer-layout").empty();
+                $.each(tmp, function (i, item) {
                     console.log("magic: " + JSON.stringify(item, null, 2));
                     renderBuzzer(item);
                 });
@@ -48,6 +57,22 @@
                 console.log("Request Failed: " + err);
             });
     }, 250);
+
+    function sortByBuzzerTime(array) {
+        return array.sort(function (a, b) {
+            if (!a['buzzered'] && b['buzzered']) {
+                return 1;
+            } else if (a['buzzered'] && !b['buzzered']) {
+                return -1;
+            } else if (a['buzzered'] && b['buzzered']) {
+                var x = a['buzzerTick'];
+                var y = b['buzzerTick'];
+                return ((x < y) ? -1 : ((x > y) ? 1 : 0));
+            } else {
+                return 0;
+            }
+        });
+    }
 
     function renderBuzzer(buzzer) {
         newdiv = '<div class="col-sm-4">' +
