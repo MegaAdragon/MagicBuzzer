@@ -44,12 +44,17 @@ def api_all():
             buzzer['buzzerTick'] = c['buzzerTick']
 
         if c['addr'] == '192.168.0.70':
-            buzzer['color'] = 'blue'
+            buzzer['color'] = '#478eff'
         elif c['addr'] == '192.168.0.183':
-            buzzer['color'] = 'yellow'
+            buzzer['color'] = '#fcf568'
         buzzer_list.append(buzzer)
             
     return jsonify(buzzer_list)
+
+@app.route('/api/v1/buzzer/reset', methods=['POST'])
+def api_reset():
+    reset_buzzer()
+    return make_response("Success", 200)
 
 
 if __name__ == '__main__':
@@ -75,9 +80,6 @@ if __name__ == '__main__':
             last_sync = time.time()
             print("sync broadcast send", math.ceil(tick))
             udp_sync_socket.sendto(math.ceil(tick).to_bytes(4, byteorder='little'), ('<broadcast>', 4210))
-
-            # TODO: remove this
-            reset_buzzer()
 
         try:
             data, addr = udp_sync_socket.recvfrom(128)

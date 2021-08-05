@@ -19,7 +19,7 @@
             <h1 class="jumbotron-heading">Buzzer</h1>
             <p class="lead text-muted">Click here to reset the buzzers:</p>
             <p>
-                <a href="#" class="btn btn-outline-success">Reset</a>
+                <a href="#" class="btn btn-outline-success" id="reset-button">Reset</a>
             </p>
         </div>
     </section>
@@ -69,8 +69,8 @@
                 // render buzzer list
                 $("#buzzer-layout").empty();
                 $.each(tmp, function (i, item) {
-                    console.log("magic: " + JSON.stringify(item, null, 2));
-                    renderBuzzer(item);
+                    console.log("magic: " + JSON.stringify(item));
+                    renderBuzzer(item, i + 1, tmp)
                 });
             })
             .fail(function (jqxhr, textStatus, error) {
@@ -95,23 +95,33 @@
         });
     }
 
-    function renderBuzzer(buzzer) {
+    function renderBuzzer(buzzer, i, list) {
         newdiv = '<div class="col-md-4">' +
             '<div class="card mb-3">' +
             '<h5 class="card-header" style="background-color:' + buzzer.color + ';">' + buzzer.addr + '</h5>' +
-           // '<div class="panel-heading" style="background-color:' + buzzer.color + ';">' +
+            // '<div class="panel-heading" style="background-color:' + buzzer.color + ';">' +
             '<div class="card-body text-center">' +
             '<svg height="100" width="100">' +
             '<circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="' + (buzzer.buzzered ? 'red' : 'none') + '"/>' +
             '</svg>' +
             '<div class="d-flex justify-content-between align-items-center">' +
-            '<h4>1.</h4>' +
-            '<small class="text-muted">+100 ms</small>' +
-            '</div>' +
+            '<h4>' + i + '.</h4>';
+        if (i > 1 && buzzer.buzzered) {
+            newdiv += '<small class="text-muted">+' + (buzzer.buzzerTick - list[i - 2].buzzerTick) + ' ms</small>';
+        }
+        newdiv += '</div>' +
             '</div></div></div></div>';
 
         $("#buzzer-layout").append(newdiv);
     }
+
+    $('#reset-button').on('click', function (event) {
+        event.preventDefault(); // To prevent following the link (optional)
+        $.post("http://localhost:5000/api/v1/buzzer/reset")
+            .fail(function () {
+                console.log("error");
+            });
+    });
 </script>
 </body>
 </html>
