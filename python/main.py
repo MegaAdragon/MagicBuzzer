@@ -11,6 +11,7 @@ clients = []
 
 app = Flask(__name__)
 
+
 def get_client(**kwargs):
     if len(clients) < 1:
         return None
@@ -36,6 +37,8 @@ def home():
 @app.route('/api/v1/buzzer/all', methods=['GET'])
 def api_all():
     buzzer_list = []
+
+    # FIXME: this is not very efficient
     for c in clients:
         buzzer = {'addr': c['addr']}
 
@@ -51,6 +54,7 @@ def api_all():
             
     return jsonify(buzzer_list)
 
+
 @app.route('/api/v1/buzzer/reset', methods=['POST'])
 def api_reset():
     reset_buzzer()
@@ -59,7 +63,7 @@ def api_reset():
 
 if __name__ == '__main__':
     # run flask in own thread
-    threading.Thread(target=app.run, daemon=True, kwargs={'host': 'localhost', 'port': 5000, 'debug': False}).start()
+    threading.Thread(target=app.run, daemon=True, kwargs={'host': '0.0.0.0', 'port': 5000, 'debug': False}).start()
 
     start_time = time.time()
     udp_sync_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -106,6 +110,7 @@ if __name__ == '__main__':
         # Get the list sockets which are readable
         read_sockets, write_sockets, error_sockets = select.select(socket_list, [], socket_list, 0.1)
 
+        # TODO: I need another layer here to distinguish the messages
         for sock in read_sockets:
             data = sock.recv(128)
             if data[0] == 0x01 and len(data) == 5:
@@ -119,10 +124,11 @@ if __name__ == '__main__':
                 c['heartbeat'] = tick
             else:
                 print(sock.getpeername(), "unknown server response")
+                assert False
 
         for sock in error_sockets:
             print("error socket", sock)
-            assert (False)
+            assert False
 
         for c in clients:
             if 'heartbeat' in c and tick - c['heartbeat'] > 2000:
