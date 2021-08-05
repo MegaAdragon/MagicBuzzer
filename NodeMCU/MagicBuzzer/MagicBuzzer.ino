@@ -82,7 +82,7 @@ void setup() {
 
   // flip the display
   display.setRotation(2);
-  
+
   display.clearDisplay();
   display.setTextSize(1); // -> font height: 8px
   display.setTextColor(SSD1306_WHITE); // Draw white text
@@ -150,18 +150,20 @@ void loop() {
       commHandler(client);  // handle incoming data
 
       if (isBuzzered && !buzzerHandled) {
-        static uint8_t buf[sizeof(uint8_t) + sizeof(buzzerTick)];
+        // header + payload
+        static uint8_t buf[sizeof(uint8_t) * 2 + sizeof(buzzerTick)];
         Serial.printf("Buzzered: %d\n", buzzerTick);
         digitalWrite(BUZZER_LED, HIGH);
         buf[0] = 0x01;
-        memcpy(&buf[1], (uint8_t*)&buzzerTick, sizeof(buzzerTick));
+        buf[1] = sizeof(buzzerTick);
+        memcpy(&buf[2], (uint8_t*)&buzzerTick, sizeof(buzzerTick));
         client.write(buf, sizeof(buf));
         buzzerHandled = true;
       }
 
       if (millis() - lastHeartbeatTick > 1000)
       {
-        const uint8_t heartBeatMsg[1] = { 0xAA };
+        const uint8_t heartBeatMsg[] = { 0xAA, 0x00 };
         client.write(heartBeatMsg, sizeof(heartBeatMsg));
         lastHeartbeatTick = millis();
       }

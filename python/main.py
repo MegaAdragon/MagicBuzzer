@@ -61,6 +61,51 @@ def api_reset():
     return make_response("Success", 200)
 
 
+def handle_data(sock, cmd, data):
+    if cmd == 0x01 and len(data) == 4:
+        buzzerTick = int.from_bytes(data, byteorder='little')
+        print(tick, "BUZZERED", sock.getpeername(), buzzerTick)
+        c = get_client(socket=sock)
+        c['buzzered'] = True
+        c['buzzerTick'] = buzzerTick
+    elif cmd == 0xAA:
+        c = get_client(socket=sock)
+        c['heartbeat'] = tick
+    else:
+        print(sock.getpeername(), "unknown server response")
+        assert False
+
+
+data_buffer = bytes()
+
+
+def on_data_received(sock, data):
+    global data_buffer
+    data_buffer += data
+    header_size = 2
+
+    while True:
+        if len(data_buffer) < header_size:
+            # not enough data
+            break
+
+        header = data_buffer[:header_size]
+        size = header[1]
+
+        if len(data_buffer) < header_size + size:
+            # wait for complete payload
+            break
+
+        # Read the content of the message body
+        body = data_buffer[header_size:header_size + size]
+
+        # data processing
+        handle_data(sock, header[0], body)
+
+        # Get the next packet
+        data_buffer = data_buffer[header_size + size:]
+
+
 if __name__ == '__main__':
     # run flask in own thread
     threading.Thread(target=app.run, daemon=True, kwargs={'host': '0.0.0.0', 'port': 5000, 'debug': False}).start()
@@ -98,6 +143,7 @@ if __name__ == '__main__':
                     c = {'socket': socket.socket(socket.AF_INET, socket.SOCK_STREAM), 'addr': addr[0]}
                     c['socket'].settimeout(1)
                     c['socket'].connect((addr[0], 9999))
+                    c['heartbeat'] = tick
                     clients.append(c)
 
         except socket.error:
@@ -110,28 +156,16 @@ if __name__ == '__main__':
         # Get the list sockets which are readable
         read_sockets, write_sockets, error_sockets = select.select(socket_list, [], socket_list, 0.1)
 
-        # TODO: I need another layer here to distinguish the messages
         for sock in read_sockets:
             data = sock.recv(128)
-            if data[0] == 0x01 and len(data) == 5:
-                buzzerTick = int.from_bytes(data[1:], byteorder='little')
-                print(tick, "BUZZERED", sock.getpeername(), buzzerTick)
-                c = get_client(socket=sock)
-                c['buzzered'] = True
-                c['buzzerTick'] = buzzerTick
-            elif data[0] == 0xAA:
-                c = get_client(socket=sock)
-                c['heartbeat'] = tick
-            else:
-                print(sock.getpeername(), "unknown server response")
-                assert False
+            on_data_received(sock, data)
 
         for sock in error_sockets:
             print("error socket", sock)
             assert False
 
         for c in clients:
-            if 'heartbeat' in c and tick - c['heartbeat'] > 2000:
+            if tick - c['heartbeat'] > 2000:
                 print(c['socket'].getpeername(), "Heartbeat timeout")
                 clients.remove(c)
 
