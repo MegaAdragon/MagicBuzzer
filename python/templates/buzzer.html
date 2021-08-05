@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <!-- Custom CSS for sticky footer -->
+    <link href="{{ url_for('static', filename='sticky-footer.css') }}" rel="stylesheet">
+
+    <title>MagicBuzzer</title>
+</head>
+<body>
+<main role="main">
+    <section class="jumbotron text-center">
+        <div class="container">
+            <h1 class="jumbotron-heading">Buzzer</h1>
+            <p class="lead text-muted">Click here to reset the buzzers:</p>
+            <p>
+                <a class="btn btn-outline-success" id="reset-button">Reset</a>
+            </p>
+        </div>
+    </section>
+
+    <div class="container">
+        <!--        TODO: cards with same width + height:-->
+        <!--        <div class="card-deck" id="buzzer-layout">-->
+
+        <div class="row justify-content-md-center" id="buzzer-layout">
+            <!--            This is a dummy element-->
+            <!-- <div class="col-md-4">
+                 <div class="card mb-3">
+                     <h5 class="card-header">192.168.0.100</h5>
+                     <div class="card-body text-center">
+                         <svg height="100" width="100">
+                             <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="none"/>
+                         </svg>
+                         <div class="d-flex justify-content-between align-items-center">
+                             <h4>1.</h4>
+                             <small class="text-muted">+100 ms</small>
+                         </div>
+                     </div>
+                 </div>
+             </div>-->
+        </div>
+    </div>
+</main> <!-- /container -->
+
+<footer class="footer">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+            <p class="text-muted">MagicBuzzer v0.1</p>
+        </div>
+    </div>
+</footer>
+
+<!-- Optional JavaScript -->
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+
+<script type="text/javascript">
+    let apiRoot = 'http://' + window.location.hostname + ':5000'
+    var buzzerList;
+
+    /*
+    Poll data from backend at fixed interval
+     */
+    setInterval(function () {
+        $.getJSON(apiRoot + "/api/v1/buzzer/all")
+            .done(function (data) {
+                // only render if data has changed
+                if (JSON.stringify(buzzerList) === JSON.stringify(data) || data.length < 1) {
+                    return;
+                }
+
+                buzzerList = data;
+                let tmp = sortByBuzzerTime(data);
+
+                // render buzzer list
+                $("#buzzer-layout").empty();
+                $.each(tmp, function (i, item) {
+                    renderBuzzer(item, i + 1, tmp[0])
+                });
+            })
+            .fail(function (jqxhr, textStatus, error) {
+                var err = textStatus + ", " + error;
+                console.log("Request Failed: " + err);
+            });
+    }, 100);
+
+    /*
+    Sort list by buzzerTick (time at which the buzzer was pressed)
+     */
+    function sortByBuzzerTime(array) {
+        return array.sort(function (a, b) {
+            if (!a['buzzered'] && b['buzzered']) {
+                return 1;
+            } else if (a['buzzered'] && !b['buzzered']) {
+                return -1;
+            } else if (a['buzzered'] && b['buzzered']) {
+                var x = a['buzzerTick'];
+                var y = b['buzzerTick'];
+                return ((x < y) ? -1 : ((x > y) ? 1 : 0));
+            } else {
+                return 0;
+            }
+        });
+    }
+
+    /*
+    Render buzzer info to HTML
+     */
+    function renderBuzzer(buzzer, i, firstElement) {
+        var newDiv = '<div class="col-md-4">' +
+            '<div class="card mb-3">' +
+            '<h5 class="card-header" style="background-color:' + buzzer.color + ';">' + buzzer.addr + '</h5>' +
+            '<div class="card-body text-center">' +
+            '<svg height="100" width="100">' +
+            '<circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="' + (buzzer.buzzered ? 'red' : 'none') + '"/>' +
+            '</svg>';
+
+        // additional info if buzzered
+        if (buzzer.buzzered) {
+            newDiv += '<div class="d-flex justify-content-between align-items-center">' +
+                '<h4>' + i + '.</h4>';
+            if (i > 1) {
+                newDiv += '<small class="text-muted">+' + (buzzer.buzzerTick - firstElement.buzzerTick) + ' ms</small>';
+            }
+            newDiv += '</div>';
+        }
+        newDiv += '</div></div></div></div>';
+
+        // add element to container
+        $("#buzzer-layout").append(newDiv);
+    }
+
+    /*
+    Handle reset button -> reset all buzzer
+     */
+    $('#reset-button').on('click', function (event) {
+        event.preventDefault(); // To prevent following the link (optional)
+        $.post(apiRoot + "/api/v1/buzzer/reset")
+            .fail(function () {
+                console.log("error");
+            });
+    });
+</script>
+</body>
+</html>
