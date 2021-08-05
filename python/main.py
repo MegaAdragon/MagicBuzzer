@@ -46,10 +46,12 @@ def api_all():
             buzzer['buzzered'] = c['buzzered']
             buzzer['buzzerTick'] = c['buzzerTick']
 
-        if c['addr'] == '192.168.0.70':
+        if c['addr'] == '192.168.0.70' or c['addr'] == '192.168.0.23':
             buzzer['color'] = '#478eff'
-        elif c['addr'] == '192.168.0.183':
+        elif c['addr'] == '192.168.0.183' or c['addr'] == '192.168.0.24':
             buzzer['color'] = '#fcf568'
+        elif c['addr'] == '192.168.0.17':
+            buzzer['color'] = '#ff5e5e'
         buzzer_list.append(buzzer)
             
     return jsonify(buzzer_list)
@@ -165,7 +167,7 @@ if __name__ == '__main__':
             assert False
 
         for c in clients:
-            if tick - c['heartbeat'] > 2000:
+            if tick - c['heartbeat'] > 3000:
                 print(c['socket'].getpeername(), "Heartbeat timeout")
                 clients.remove(c)
 
