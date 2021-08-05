@@ -5,8 +5,24 @@
 
 #include "ESPAsyncUDP.h"
 
-const char* ssid = "";
-const char* password =  "";
+typedef struct {
+  const char* ssid;
+  const char* password;
+} WifiInfo;
+
+const WifiInfo wifiList[] = {
+  {
+    .ssid = "BuzzerWifi",
+    .password = "BuzzerWifi"
+  },
+/*
+ * add additional Wifi networks here
+ */
+//  {
+//    .ssid = "",
+//    .password = ""
+//  }
+};
 
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
@@ -64,23 +80,38 @@ void setup() {
     for (;;); // Don't proceed, loop forever
   }
 
+  // flip the display
+  display.setRotation(2);
+  
   display.clearDisplay();
   display.setTextSize(1); // -> font height: 8px
   display.setTextColor(SSD1306_WHITE); // Draw white text
 
-  display.setCursor(0, 0);
-  display.print("Connecting to WiFi:");
-  display.setCursor(0, 12);
-  display.print(ssid);
-  display.display();
+  delay(100);
 
-  delay(1000);
-  WiFi.begin(ssid, password);
-
-  // wait for WiFi connection
+  int wifiIdx = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Connecting to WiFi:");
+    display.setCursor(0, 12);
+    display.print(wifiList[wifiIdx].ssid);
+    display.display();
+
+    WiFi.begin(wifiList[wifiIdx].ssid, wifiList[wifiIdx].password);
     Serial.println("Connecting...");
+
+    // wait 10s for connection
+    int timeoutCnt = 0;
+    while (WiFi.status() != WL_CONNECTED && timeoutCnt < 100) {
+      delay(100);
+      timeoutCnt++;
+    }
+
+    wifiIdx++;
+    if (wifiIdx >= sizeof(wifiList) / sizeof(wifiList[0])) {
+      wifiIdx = 0;
+    }
   }
 
   Serial.print("Connected to WiFi. IP:");
@@ -92,8 +123,7 @@ void setup() {
     udp.onPacket([](AsyncUDPPacket packet) {
       Serial.println("Sync");
 
-      if (packet.length() == sizeof(uint32_t))
-      {
+      if (packet.length() == sizeof(uint32_t)) {
         localTick = millis();
         memcpy((uint8_t*)&masterTick, packet.data(), sizeof(masterTick));
         udp.writeTo((uint8_t*)&localTick, sizeof(localTick), packet.remoteIP(), UDP_PORT);
