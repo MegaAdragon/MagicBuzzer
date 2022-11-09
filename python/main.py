@@ -88,13 +88,13 @@ def check_buzzer_pos():
 
 
 def handle_data(sock, cmd, data):
-    if cmd == 0x01 and len(data) == 4:
-        buzzerTick = int.from_bytes(data, byteorder='little')
-        print(tick, "BUZZERED", sock.getpeername(), buzzerTick)
+    if cmd == 0x01 and len(data) >= 5:
         c = get_client(socket=sock)
         c['buzzered'] = True
-        c['buzzerTick'] = buzzerTick
+        c['buzzerTick'] = int.from_bytes(data[:4], byteorder='little')
         c['tick'] = tick
+        c['src'] = data[4]
+        print(tick, "BUZZERED", sock.getpeername(), c['src'], c['buzzerTick'])
         check_buzzer_pos()
     elif cmd == 0xAA:
         c = get_client(socket=sock)
@@ -102,7 +102,7 @@ def handle_data(sock, cmd, data):
         c['voltage'] = int.from_bytes(data[:2], byteorder='little', signed=False) / 1000.0
         c['rssi'] = data[2]
     else:
-        print(sock.getpeername(), "unknown client response")
+        print(sock.getpeername(), "unknown client response", cmd, data)
         assert False
 
 

@@ -29,6 +29,25 @@ typedef struct __attribute__ ((packed)) {
   int8_t rssi;
 } BuzzerState;
 
+typedef enum {
+  SRC_BUZZER = 0,
+  SRC_B1 = 1,
+  SRC_B2 = 2  
+} BUZZER_SRC;
+
+typedef enum {
+  MODE_BUZZER_ONLY = 0, // default
+  MODE_BTN_ONLY = 1,
+  MODE_ALL = 2
+} BUZZER_MODE;
+
+typedef struct {
+  bool isBuzzered;
+  bool isHandled;
+  uint32_t buzzerTick;
+  BUZZER_SRC src;
+} BuzzerEvent;
+
 #define OLED_RESET      -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS  0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 #define SCREEN_WIDTH    128 // OLED display width, in pixels
@@ -45,20 +64,25 @@ uint32_t localTick;
 uint32_t masterTick;
 
 uint8_t buzzerPos = 0xFF;
+volatile BUZZER_MODE mode = MODE_BUZZER_ONLY;
 
 #define LED1        2 // D4
 #define BUZZER_LED 15 // D8
 #define BUZZER_PIN 14 // D5
+#define B1_PIN     12
+#define B2_PIN     13
 
-volatile bool isBuzzered = false;
-volatile bool buzzerHandled = false;
-volatile uint32_t buzzerTick;
-
+static volatile BuzzerEvent evt;
 static BuzzerState buzzerState;
 
 void ICACHE_RAM_ATTR buzzerInterruptCallback() {
+  if (mode == MODE_BTN_ONLY)
+  {
+    return;
+  }
+
   // check if already buzzered
-  if (isBuzzered)
+  if (evt.isBuzzered)
   {
     return;
   }
@@ -66,9 +90,39 @@ void ICACHE_RAM_ATTR buzzerInterruptCallback() {
   // Get the pin reading.
   bool buzzerPressed = !digitalRead(BUZZER_PIN); // pin is low active
   if (buzzerPressed) {
-    buzzerTick = getTick();
-    isBuzzered = true;
-    buzzerHandled = false;
+    evt.buzzerTick = getTick();
+    evt.isBuzzered = true;
+    evt.isHandled = false;
+    evt.src = SRC_BUZZER;
+  }
+}
+
+void ICACHE_RAM_ATTR btnInterruptCallback() {
+  if (mode == MODE_BUZZER_ONLY)
+  {
+    return;
+  }  
+
+  // check if already buzzered
+  if (evt.isBuzzered)
+  {
+    return;
+  }
+
+  if (!digitalRead(B1_PIN)) {
+    evt.buzzerTick = getTick();
+    evt.isBuzzered = true;
+    evt.isHandled = false;
+    evt.src = SRC_B1;
+    Serial.println("B1");
+  }
+
+  if (!digitalRead(B2_PIN)) {
+    evt.buzzerTick = getTick();
+    evt.isBuzzered = true;
+    evt.isHandled = false;
+    evt.src = SRC_B2;
+    Serial.println("B2");
   }
 }
 
@@ -80,6 +134,10 @@ void setup() {
 
   pinMode(BUZZER_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BUZZER_PIN), buzzerInterruptCallback, FALLING);
+  pinMode(B1_PIN, INPUT_PULLUP);
+  pinMode(B2_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(B1_PIN), btnInterruptCallback, FALLING);
+  attachInterrupt(digitalPinToInterrupt(B2_PIN), btnInterruptCallback, FALLING);
 
   digitalWrite(LED1, LOW);
   pinMode(LED1, OUTPUT);
@@ -159,16 +217,17 @@ void loop() {
     while (client.connected()) {
       commHandler(client);  // handle incoming data
 
-      if (isBuzzered && !buzzerHandled) {
+      if (evt.isBuzzered && !evt.isHandled) {
         // header + payload
-        static uint8_t buf[sizeof(uint8_t) * 2 + sizeof(buzzerTick)];
-        Serial.printf("Buzzered: %d\n", buzzerTick);
+        uint8_t buf[sizeof(evt.buzzerTick) + 3];
+        Serial.printf("Buzzered: %d\n", evt.buzzerTick);
         digitalWrite(BUZZER_LED, HIGH);
         buf[0] = 0x01;
-        buf[1] = sizeof(buzzerTick);
-        memcpy(&buf[2], (uint8_t*)&buzzerTick, sizeof(buzzerTick));
+        buf[1] = sizeof(evt.buzzerTick) + 1;
+        memcpy(&buf[2], (uint8_t*)&evt.buzzerTick, sizeof(evt.buzzerTick));
+        buf[6] = evt.src;
         client.write(buf, sizeof(buf));
-        buzzerHandled = true;
+        evt.isHandled = true;
       }
 
       if (millis() - lastHeartbeatTick > 1000) {
@@ -176,7 +235,7 @@ void loop() {
         lastHeartbeatTick = millis();
       }
 
-      if (isBuzzered && buzzerPos == 1) {
+      if (evt.isBuzzered && buzzerPos == 1) {
         if (millis() - lastBlinkTick > 100) {
           digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
           lastBlinkTick = millis();
@@ -249,6 +308,10 @@ void handleCommand(WiFiClient& client, byte data[], int length) {
       break;
     case 0x20:
       buzzerPos = data[1];
+      break;
+    case 0xA0:
+      mode = (BUZZER_MODE)data[1];
+      break;
     default:
       break;
   }
@@ -259,9 +322,9 @@ uint32_t getTick() {
 }
 
 void resetBuzzer() {
-  isBuzzered = false;
+  evt.isBuzzered = false;
+  evt.isHandled = true;
   digitalWrite(BUZZER_LED, LOW);
-  buzzerHandled = true;
 }
 
 void updateDisplay(WiFiClient& client) {
@@ -269,11 +332,29 @@ void updateDisplay(WiFiClient& client) {
   display.setTextSize(1); // -> font height: 8px
   display.setRotation(2);
 
-  if (isBuzzered && buzzerPos != 0xFF) {
+  if (evt.isBuzzered) {
     display.setRotation(3);
-    display.setTextSize(4);
-    display.setCursor(20, 0);
-    display.printf("%d", buzzerPos);
+    display.setTextSize(1);
+    
+    if (evt.src == SRC_BUZZER) {
+      display.setCursor(0, 80);
+      display.printf("BUZ");
+    }
+    else if (evt.src == SRC_B1) {
+      display.setCursor(0, 80);
+      display.printf("B1");
+    }
+    else if (evt.src == SRC_B2) {
+      display.setCursor(10, 80);
+      display.printf("B2");
+    }
+    
+    if (buzzerPos != 0xFF) {
+      display.setTextSize(4);
+      display.setCursor(0, 20);
+      display.printf("%d", buzzerPos);
+    }
+
     display.display();
     return;
   }             
