@@ -99,6 +99,8 @@ def handle_data(sock, cmd, data):
     elif cmd == 0xAA:
         c = get_client(socket=sock)
         c['heartbeat'] = tick
+        c['voltage'] = int.from_bytes(data[:2], byteorder='little', signed=False) / 1000.0
+        c['rssi'] = data[2]
     else:
         print(sock.getpeername(), "unknown client response")
         assert False

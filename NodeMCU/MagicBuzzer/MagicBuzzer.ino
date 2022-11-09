@@ -24,6 +24,11 @@ const WifiInfo wifiList[] = {
 //  }
 };
 
+typedef struct __attribute__ ((packed)) {
+  uint16_t voltage;
+  int8_t rssi;
+} BuzzerState;
+
 #define OLED_RESET      -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS  0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 #define SCREEN_WIDTH    128 // OLED display width, in pixels
@@ -31,6 +36,7 @@ const WifiInfo wifiList[] = {
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define UDP_PORT 4210 // listen port
+#define HARDWARE_V2 1
 
 AsyncUDP udp;
 WiFiServer wifiServer(9999);  // TCP socket server on port 9999
@@ -47,6 +53,8 @@ uint8_t buzzerPos = 0xFF;
 volatile bool isBuzzered = false;
 volatile bool buzzerHandled = false;
 volatile uint32_t buzzerTick;
+
+static BuzzerState buzzerState;
 
 void ICACHE_RAM_ATTR buzzerInterruptCallback() {
   // check if already buzzered
@@ -164,8 +172,7 @@ void loop() {
       }
 
       if (millis() - lastHeartbeatTick > 1000) {
-        const uint8_t heartBeatMsg[] = { 0xAA, 0x00 };
-        client.write(heartBeatMsg, sizeof(heartBeatMsg));
+        sendHeartbeat(client);
         lastHeartbeatTick = millis();
       }
 
@@ -175,6 +182,14 @@ void loop() {
           lastBlinkTick = millis();
         }
       }
+
+      // apply small offset to ADC value -> seems to improve accuracy
+#if HARDWARE_V1
+      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (8.2f / (8.2f + 33.0f)) * 1000);
+#elif HARDWARE_V2
+      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (10.0f / (10.0f + 33.0f)) * 1000);
+#endif
+      buzzerState.rssi = WiFi.RSSI();
 
       updateDisplay(client);
       delay(50);
@@ -275,7 +290,15 @@ void updateDisplay(WiFiClient& client) {
   display.print(WiFi.localIP());
 
   display.setCursor(0, 24);
-  display.printf("VBAT: %.2f\n", ((float)(analogRead(A0) / 1023.0f)) / (8.2f / (8.2f + 33.0f)));
+  display.printf("VBAT: %.2f\n", buzzerState.voltage / 1000.0f);
 
   display.display();
+}
+
+void sendHeartbeat(WiFiClient& client) {
+  uint8_t buf[20];
+  buf[0] = 0xAA; // heartbeat
+  buf[1] = sizeof(buzzerState); // msg size
+  memcpy(&buf[2], &buzzerState, sizeof(buzzerState));
+  client.write(buf, sizeof(buzzerState) + 2);
 }
