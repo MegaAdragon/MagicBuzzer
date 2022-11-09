@@ -24,10 +24,10 @@ const WifiInfo wifiList[] = {
 //  }
 };
 
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define OLED_RESET      -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS  0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define SCREEN_WIDTH    128 // OLED display width, in pixels
+#define SCREEN_HEIGHT   32 // OLED display height, in pixels
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define UDP_PORT 4210 // listen port
@@ -37,6 +37,8 @@ WiFiServer wifiServer(9999);  // TCP socket server on port 9999
 
 uint32_t localTick;
 uint32_t masterTick;
+
+uint8_t buzzerPos = 0xFF;
 
 #define LED1        2 // D4
 #define BUZZER_LED 15 // D8
@@ -161,15 +163,21 @@ void loop() {
         buzzerHandled = true;
       }
 
-      if (millis() - lastHeartbeatTick > 1000)
-      {
+      if (millis() - lastHeartbeatTick > 1000) {
         const uint8_t heartBeatMsg[] = { 0xAA, 0x00 };
         client.write(heartBeatMsg, sizeof(heartBeatMsg));
         lastHeartbeatTick = millis();
       }
 
+      if (isBuzzered && buzzerPos == 1) {
+        if (millis() - lastBlinkTick > 100) {
+          digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
+          lastBlinkTick = millis();
+        }
+      }
+
       updateDisplay(client);
-      delay(100);
+      delay(50);
     }
 
     client.stop();
@@ -222,7 +230,10 @@ void handleCommand(WiFiClient& client, byte data[], int length) {
   switch (cmd) {
     case 0x10:
       resetBuzzer();
+      buzzerPos = 0xFF;
       break;
+    case 0x20:
+      buzzerPos = data[1];
     default:
       break;
   }
@@ -240,6 +251,17 @@ void resetBuzzer() {
 
 void updateDisplay(WiFiClient& client) {
   display.clearDisplay();
+  display.setTextSize(1); // -> font height: 8px
+  display.setRotation(2);
+
+  if (isBuzzered && buzzerPos != 0xFF) {
+    display.setRotation(3);
+    display.setTextSize(4);
+    display.setCursor(20, 0);
+    display.printf("%d", buzzerPos);
+    display.display();
+    return;
+  }             
 
   display.setCursor(0, 0);
   if (client.connected()) {

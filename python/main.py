@@ -4,12 +4,16 @@ import time
 import math
 import select
 import threading
+import logging
 
 from flask import Flask, render_template, request, jsonify, make_response
 
 clients = []
 
 app = Flask(__name__)
+
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 
 def get_client(**kwargs):
@@ -46,12 +50,14 @@ def api_all():
             buzzer['buzzered'] = c['buzzered']
             buzzer['buzzerTick'] = c['buzzerTick']
 
-        if c['addr'] == '192.168.0.70' or c['addr'] == '192.168.0.23':
-            buzzer['color'] = '#478eff'
-        elif c['addr'] == '192.168.0.183' or c['addr'] == '192.168.0.24':
-            buzzer['color'] = '#fcf568'
-        elif c['addr'] == '192.168.0.17':
-            buzzer['color'] = '#ff5e5e'
+        if c['addr'] == '192.168.0.23':
+            buzzer['color'] = '#478eff' # blue
+        elif c['addr'] == '192.168.0.24':
+            buzzer['color'] = '#fcf568' # yellow
+        elif c['addr'] == '192.168.0.15':
+            buzzer['color'] = '#ff5e5e' # red
+        elif c['addr'] == '192.168.0.30':
+            buzzer['color'] = '#35d45f' # green
         buzzer_list.append(buzzer)
             
     return jsonify(buzzer_list)
@@ -63,6 +69,24 @@ def api_reset():
     return make_response("Success", 200)
 
 
+def check_buzzer_pos():
+    buzzered_clients = []
+    for c in clients:
+        if 'buzzered' in c and c['buzzered']:
+            buzzered_clients.append(c)
+
+    buzzered_clients = sorted(buzzered_clients, key=lambda c: c['buzzerTick'])
+
+    # for safety reasons
+    if len(buzzered_clients) == 0 or tick - buzzered_clients[0]['tick'] < 300:
+        return
+
+    pos = 1
+    for c in buzzered_clients:
+        c['socket'].sendall(bytearray([0x20, pos, 0xFF]))
+        pos = pos + 1
+
+
 def handle_data(sock, cmd, data):
     if cmd == 0x01 and len(data) == 4:
         buzzerTick = int.from_bytes(data, byteorder='little')
@@ -70,11 +94,13 @@ def handle_data(sock, cmd, data):
         c = get_client(socket=sock)
         c['buzzered'] = True
         c['buzzerTick'] = buzzerTick
+        c['tick'] = tick
+        check_buzzer_pos()
     elif cmd == 0xAA:
         c = get_client(socket=sock)
         c['heartbeat'] = tick
     else:
-        print(sock.getpeername(), "unknown server response")
+        print(sock.getpeername(), "unknown client response")
         assert False
 
 
@@ -110,14 +136,17 @@ def on_data_received(sock, data):
 
 if __name__ == '__main__':
     # run flask in own thread
-    threading.Thread(target=app.run, daemon=True, kwargs={'host': '0.0.0.0', 'port': 5000, 'debug': False}).start()
+    threading.Thread(target=app.run, daemon=True, kwargs={'host': '0.0.0.0', 'port': 5001, 'debug': False}).start()
 
     start_time = time.time()
     udp_sync_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     udp_sync_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+    own_address = socket.gethostbyname(socket.gethostname())
+    print("Host:", own_address)
+
     # listen to this port
-    udp_sync_socket.bind(('', 4210))
+    udp_sync_socket.bind((own_address, 4210))
     udp_sync_socket.settimeout(1)
     udp_sync_socket.setblocking(False)
 
@@ -135,8 +164,7 @@ if __name__ == '__main__':
         try:
             data, addr = udp_sync_socket.recvfrom(128)
 
-            # FIXME
-            if addr[0] != '192.168.0.247':
+            if addr[0] != own_address:
                 print(tick, "tick from", addr, int.from_bytes(data, byteorder='little'))
 
                 c = get_client(addr=addr[0])
@@ -170,5 +198,7 @@ if __name__ == '__main__':
             if tick - c['heartbeat'] > 3000:
                 print(c['socket'].getpeername(), "Heartbeat timeout")
                 clients.remove(c)
+
+        check_buzzer_pos()
 
         time.sleep(0.1)
