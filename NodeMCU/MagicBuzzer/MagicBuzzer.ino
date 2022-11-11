@@ -5,6 +5,14 @@
 
 #include "ESPAsyncUDP.h"
 
+#define HARDWARE_V2
+
+#define LED1        2 // D4
+#define BUZZER_LED 15 // D8
+#define BUZZER_PIN 14 // D5
+#define B1_PIN     12
+#define B2_PIN     13
+
 typedef struct {
   const char* ssid;
   const char* password;
@@ -55,7 +63,6 @@ typedef struct {
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define UDP_PORT 4210 // listen port
-#define HARDWARE_V2 1
 
 AsyncUDP udp;
 WiFiServer wifiServer(9999);  // TCP socket server on port 9999
@@ -66,30 +73,18 @@ uint32_t masterTick;
 uint8_t buzzerPos = 0xFF;
 volatile BUZZER_MODE mode = MODE_BUZZER_ONLY;
 
-#define LED1        2 // D4
-#define BUZZER_LED 15 // D8
-#define BUZZER_PIN 14 // D5
-#define B1_PIN     12
-#define B2_PIN     13
-
-static volatile BuzzerEvent evt;
-static BuzzerState buzzerState;
+volatile BuzzerEvent evt;
+BuzzerState buzzerState;
 
 void ICACHE_RAM_ATTR buzzerInterruptCallback() {
-  if (mode == MODE_BTN_ONLY)
+  // check mode and if already buzzered
+  if (mode == MODE_BTN_ONLY || evt.isBuzzered)
   {
     return;
   }
 
-  // check if already buzzered
-  if (evt.isBuzzered)
-  {
-    return;
-  }
-
-  // Get the pin reading.
-  bool buzzerPressed = !digitalRead(BUZZER_PIN); // pin is low active
-  if (buzzerPressed) {
+  // get the pin
+  if (!digitalRead(BUZZER_PIN)) {
     evt.buzzerTick = getTick();
     evt.isBuzzered = true;
     evt.isHandled = false;
@@ -98,13 +93,8 @@ void ICACHE_RAM_ATTR buzzerInterruptCallback() {
 }
 
 void ICACHE_RAM_ATTR btnInterruptCallback() {
-  if (mode == MODE_BUZZER_ONLY)
-  {
-    return;
-  }  
-
-  // check if already buzzered
-  if (evt.isBuzzered)
+  // check mode and if already buzzered
+  if (mode == MODE_BUZZER_ONLY || evt.isBuzzered)
   {
     return;
   }
@@ -114,33 +104,33 @@ void ICACHE_RAM_ATTR btnInterruptCallback() {
     evt.isBuzzered = true;
     evt.isHandled = false;
     evt.src = SRC_B1;
-    Serial.println("B1");
   }
-
-  if (!digitalRead(B2_PIN)) {
+  else if (!digitalRead(B2_PIN)) {
     evt.buzzerTick = getTick();
     evt.isBuzzered = true;
     evt.isHandled = false;
     evt.src = SRC_B2;
-    Serial.println("B2");
   }
 }
 
 void setup() {
   Serial.begin(115200);
 
+  // configure output pin
   digitalWrite(BUZZER_LED, LOW);
   pinMode(BUZZER_LED, OUTPUT);
 
+  // LED on chip (only for debug purposes)
+  digitalWrite(LED1, LOW);
+  pinMode(LED1, OUTPUT);
+
+  // configure input pins + register interrupt callbacks
   pinMode(BUZZER_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BUZZER_PIN), buzzerInterruptCallback, FALLING);
   pinMode(B1_PIN, INPUT_PULLUP);
   pinMode(B2_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(B1_PIN), btnInterruptCallback, FALLING);
   attachInterrupt(digitalPinToInterrupt(B2_PIN), btnInterruptCallback, FALLING);
-
-  digitalWrite(LED1, LOW);
-  pinMode(LED1, OUTPUT);
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -157,6 +147,7 @@ void setup() {
 
   delay(100);
 
+  // wait for WiFi connection
   int wifiIdx = 0;
   while (WiFi.status() != WL_CONNECTED) {
     display.clearDisplay();
@@ -176,6 +167,7 @@ void setup() {
       timeoutCnt++;
     }
 
+    // try next WiFi in list
     wifiIdx++;
     if (wifiIdx >= sizeof(wifiList) / sizeof(wifiList[0])) {
       wifiIdx = 0;
@@ -185,16 +177,19 @@ void setup() {
   Serial.print("Connected to WiFi. IP:");
   Serial.println(WiFi.localIP());
 
+  // open UDP listen port + register callback
   if (udp.listen(UDP_PORT)) {
     Serial.print("UDP Listening on IP: ");
     Serial.println(WiFi.localIP());
-    udp.onPacket([](AsyncUDPPacket packet) {
-      Serial.println("Sync");
 
+    // callback handler is called for every received UDP paket
+    udp.onPacket([](AsyncUDPPacket packet) {
+      // valid sync paket
       if (packet.length() == sizeof(uint32_t)) {
         localTick = millis();
         memcpy((uint8_t*)&masterTick, packet.data(), sizeof(masterTick));
         udp.writeTo((uint8_t*)&localTick, sizeof(localTick), packet.remoteIP(), UDP_PORT);
+        Serial.println("Sync");
       }
     });
   }
@@ -215,8 +210,10 @@ void loop() {
     resetBuzzer();
 
     while (client.connected()) {
-      commHandler(client);  // handle incoming data
+      // handle incoming data
+      commHandler(client);
 
+      // handle buzzer
       if (evt.isBuzzered && !evt.isHandled) {
         // header + payload
         uint8_t buf[sizeof(evt.buzzerTick) + 3];
@@ -230,11 +227,7 @@ void loop() {
         evt.isHandled = true;
       }
 
-      if (millis() - lastHeartbeatTick > 1000) {
-        sendHeartbeat(client);
-        lastHeartbeatTick = millis();
-      }
-
+      // check buzzer position
       if (evt.isBuzzered && buzzerPos == 1) {
         if (millis() - lastBlinkTick > 100) {
           digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
@@ -242,14 +235,13 @@ void loop() {
         }
       }
 
-      // apply small offset to ADC value -> seems to improve accuracy
-#if HARDWARE_V1
-      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (8.2f / (8.2f + 33.0f)) * 1000);
-#elif HARDWARE_V2
-      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (10.0f / (10.0f + 33.0f)) * 1000);
-#endif
-      buzzerState.rssi = WiFi.RSSI();
+      // handle heartbeat
+      if (millis() - lastHeartbeatTick > 1000) {
+        sendHeartbeat(client);
+        lastHeartbeatTick = millis();
+      }
 
+      updateBuzzerState();
       updateDisplay(client);
       delay(50);
     }
@@ -258,16 +250,19 @@ void loop() {
     Serial.println("Client disconnected");
   }
 
+  // idle blinking
   if (millis() - lastBlinkTick > 2500) {
     digitalWrite(LED1, !digitalRead(LED1));
     digitalWrite(BUZZER_LED, !digitalRead(BUZZER_LED));
     lastBlinkTick = millis();
   }
 
+  updateBuzzerState();
   updateDisplay(client);
   delay(200);
 }
 
+// read incoming commands from data stream
 void commHandler(WiFiClient& client) {
   static byte buf[32];
   static int idx = 0;
@@ -302,14 +297,14 @@ void commHandler(WiFiClient& client) {
 void handleCommand(WiFiClient& client, byte data[], int length) {
   byte cmd = data[0];
   switch (cmd) {
-    case 0x10:
+    case 0x10:  // reset buzzer
       resetBuzzer();
       buzzerPos = 0xFF;
       break;
-    case 0x20:
+    case 0x20:  // assign buzzer position
       buzzerPos = data[1];
       break;
-    case 0xA0:
+    case 0xA0:  // set buzzer mode
       mode = (BUZZER_MODE)data[1];
       break;
     default:
@@ -317,6 +312,7 @@ void handleCommand(WiFiClient& client, byte data[], int length) {
   }
 }
 
+// get tick based on network timestamp
 uint32_t getTick() {
   return masterTick + millis() - localTick;
 }
@@ -374,6 +370,17 @@ void updateDisplay(WiFiClient& client) {
   display.printf("VBAT: %.2f\n", buzzerState.voltage / 1000.0f);
 
   display.display();
+}
+
+void updateBuzzerState() {
+      // apply small offset to ADC value -> seems to improve accuracy
+#if defined(HARDWARE_V1)
+      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (8.2f / (8.2f + 33.0f)) * 1000);
+#elif defined(HARDWARE_V2)
+      buzzerState.voltage = (uint32_t)(((float)((analogRead(A0) - 25) / 1023.0f)) / (10.0f / (10.0f + 33.0f)) * 1000);
+#endif
+
+      buzzerState.rssi = WiFi.RSSI();
 }
 
 void sendHeartbeat(WiFiClient& client) {
