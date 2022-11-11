@@ -21,4 +21,9 @@ It makes sense to run the server on a Raspberry with WiFi hardware and host a Wi
     - Password: `BuzzerWifi`
 1. Open page in browser: http://192.168.0.1:5001/
 1. Turn on the buzzers -> display should show `Connected` and valid IP address
+
+<img src="https://github.com/MegaAdragon/MagicBuzzer/blob/79472468cc11f20bc2e7d1a50bf0544a90074b7b/doc/buzzer.jpg" "width="200"/>
+
 1. Webpage will refresh itself and buzzers can be used now
+
+![webpage](https://github.com/MegaAdragon/MagicBuzzer/blob/79472468cc11f20bc2e7d1a50bf0544a90074b7b/doc/webpage.png)
